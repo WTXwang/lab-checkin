@@ -111,6 +111,12 @@ def _now():
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+def _check_len(value, max_len, label):
+    """字符串长度校验，超长抛 400（防止超长脏数据与资源浪费）。"""
+    if value is not None and len(value) > max_len:
+        raise HTTPException(status_code=400, detail=f"{label}过长（最多 {max_len} 字）")
+
+
 # ---------- 登录 / 注册 ----------
 
 _LOGIN_FAILURES = {}  # client_ip -> (连续失败次数, 最近失败时间)
@@ -137,6 +143,9 @@ async def login(request: Request):
     operator = (data.get("operator") or "").strip()
     if not username or not password:
         raise HTTPException(status_code=401, detail="请输入用户名和密码")
+    _check_len(username, 64, "用户名")
+    _check_len(password, 128, "密码")
+    _check_len(operator, 64, "操作人")
     with db.get_db() as conn:
         user = conn.execute(
             "SELECT id, username, display_name, role, password_hash "
@@ -171,6 +180,9 @@ async def register(request: Request):
     display_name = (data.get("display_name") or "").strip()
     if not username or not password:
         raise HTTPException(status_code=400, detail="用户名和密码不能为空")
+    _check_len(username, 32, "用户名")
+    _check_len(password, 128, "密码")
+    _check_len(display_name, 64, "姓名")
     if len(password) < 6:
         raise HTTPException(status_code=400, detail="密码至少 6 位")
     try:
@@ -242,6 +254,7 @@ async def create_course(payload: dict, uid: int = Depends(require_user)):
     name = (payload.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="课程名不能为空")
+    _check_len(name, 64, "课程名")
     with db.get_db() as conn:
         try:
             cur = conn.execute(
@@ -488,6 +501,7 @@ async def add_class(payload: dict, course_id: int, role: str = Depends(require_c
     name = (payload.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="班级名不能为空")
+    _check_len(name, 64, "班级名")
     with db.get_db() as conn:
         try:
             cur = conn.execute(
@@ -525,6 +539,7 @@ async def add_experiment(payload: dict, course_id: int, role: str = Depends(requ
     name = (payload.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="实验名称不能为空")
+    _check_len(name, 64, "实验名")
     with db.get_db() as conn:
         try:
             cur = conn.execute(
@@ -549,6 +564,7 @@ async def delete_experiment(course_id: int, exp_id: int, role: str = Depends(req
 # ---------- 导入 ----------
 
 _MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 导入文件上限 10MB
+_MAX_IMPORT_ROWS = 50000  # 导入行数上限（防超大文件撑爆内存/处理时间）
 
 
 @app.post("/api/courses/{course_id}/import")
@@ -567,6 +583,8 @@ async def import_students(
         rows = importers.parse_file(file.filename, data)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if len(rows) > _MAX_IMPORT_ROWS:
+        raise HTTPException(status_code=400, detail=f"文件行数过多（最多 {_MAX_IMPORT_ROWS} 行）")
 
     added_students = added_classes = skipped = conflicts = 0
     with db.get_db() as conn:
@@ -637,6 +655,8 @@ async def add_student(payload: dict, course_id: int, role: str = Depends(require
     name = (payload.get("name") or "").strip()
     if not class_id or not student_no or not name:
         raise HTTPException(status_code=400, detail="班级、学号、姓名都不能为空")
+    _check_len(student_no, 32, "学号")
+    _check_len(name, 64, "姓名")
     with db.get_db() as conn:
         if not conn.execute(
             "SELECT id FROM classes WHERE id = ? AND course_id = ?", (class_id, course_id)
@@ -673,6 +693,7 @@ async def student_lookup(course_id: int, student_no: str, role: str = Depends(re
     student_no = (student_no or "").strip()
     if not student_no:
         raise HTTPException(status_code=400, detail="请输入学号")
+    _check_len(student_no, 32, "学号")
     with db.get_db() as conn:
         stu = conn.execute(
             "SELECT s.id, s.student_no, s.name, c.name AS class_name "

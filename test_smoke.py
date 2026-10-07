@@ -99,6 +99,10 @@ def test_fresh_flow():
 
     # --- u2：注册 → 邀请码加入 → 助教权限 ---
     with TestClient(app_module.app) as c2:
+        r = c2.post("/api/register", json={"username": "x" * 100, "password": "pass123"})
+        check("超长用户名注册 400", r.status_code == 400, r.text)
+        r = c2.post("/api/login", json={"username": "y" * 100, "password": "pass123"})
+        check("超长用户名登录 400", r.status_code == 400, r.text)
         r = c2.post("/api/register", json={"username": "u2", "password": "pass123", "display_name": "助教二"})
         check("u2 注册 role=user", r.status_code == 200 and r.json()["role"] == "user", r.text)
 
