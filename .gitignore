@@ -1,0 +1,17 @@
+# 数据库（含学生数据与账号密码哈希，绝不能公开）
+data.db
+data.db.bak-*
+
+# 本地配置（含真实密码；部署时从 config.example.py 复制）
+config.py
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 本地工具设置
+.claude/
+
+# 内部笔记
+需求文件.txt
+优化空间.txt

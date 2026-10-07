@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>实验课签到系统</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- 登录页 -->
+  <div id="view-login" class="view login-view">
+    <div class="card login-card">
+      <h1>实验课签到</h1>
+      <p class="subtitle">助教 / 老师专用</p>
+      <form id="login-form">
+        <label for="login-username">用户名</label>
+        <input id="login-username" type="text" placeholder="请输入用户名" autocomplete="username">
+        <label for="login-password">密码</label>
+        <input id="login-password" type="password" placeholder="请输入密码" autocomplete="current-password">
+        <button type="submit" class="btn primary" style="width:100%;margin-top:16px;">登录</button>
+        <p id="login-error" class="error"></p>
+        <p class="register-link">还没有账号？<a href="#" id="go-register">注册</a></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- 注册页 -->
+  <div id="view-signup" class="view login-view hidden">
+    <div class="card login-card">
+      <h1>注册账号</h1>
+      <p class="subtitle">注册后可创建自己的课程，或通过邀请码加入课程</p>
+      <form id="signup-form">
+        <label for="signup-username">用户名</label>
+        <input id="signup-username" type="text" placeholder="用于登录" autocomplete="username">
+        <label for="signup-display-name">姓名（可选，用于显示是谁登记的）</label>
+        <input id="signup-display-name" type="text" placeholder="例如：张三" autocomplete="name">
+        <label for="signup-password">密码</label>
+        <input id="signup-password" type="password" placeholder="至少 6 位" autocomplete="new-password">
+        <label for="signup-password2">确认密码</label>
+        <input id="signup-password2" type="password" placeholder="再次输入密码" autocomplete="new-password">
+        <button type="submit" class="btn primary" style="width:100%;margin-top:16px;">注册</button>
+        <p id="signup-error" class="error"></p>
+        <p class="register-link">已有账号？<a href="#" id="go-login">返回登录</a></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- 课程列表页（登录后主页） -->
+  <div id="view-courses" class="view hidden">
+    <header>
+      <div class="brand">我的课程</div>
+      <div class="header-actions">
+        <span id="courses-user" class="operator"></span>
+        <button id="btn-global-admin" class="btn ghost small hidden">全局管理</button>
+        <button id="btn-courses-logout" class="btn ghost small">退出</button>
+      </div>
+    </header>
+
+    <div class="card">
+      <h2>我的课程</h2>
+      <ul id="course-list" class="course-list"></ul>
+    </div>
+
+    <div class="card">
+      <h2>创建课程</h2>
+      <div class="inline-form">
+        <input id="new-course" placeholder="课程名称，如：大学物理实验">
+        <button id="btn-create-course" class="btn primary">创建</button>
+      </div>
+      <p class="hint">创建后你就是该课程的管理员，可管理班级、实验、学生，并邀请助教。</p>
+    </div>
+
+    <div class="card">
+      <h2>加入课程</h2>
+      <div class="inline-form">
+        <input id="invite-code" placeholder="输入邀请码，如：A1B2C3D4">
+        <button id="btn-invite-lookup" class="btn">查询</button>
+      </div>
+      <div id="invite-preview"></div>
+    </div>
+  </div>
+
+  <!-- 登记 -->
+  <div id="view-register" class="view hidden">
+    <header>
+      <button class="btn ghost small btn-back-courses" title="返回课程列表">🏠</button>
+      <div class="brand"><span class="course-title-name">课程</span> · 登记</div>
+      <div class="header-actions">
+        <button class="btn ghost small btn-menu">☰</button>
+      </div>
+    </header>
+
+    <!-- 第一步：选择班级与实验 -->
+    <div id="reg-select-panel">
+      <div class="card">
+        <h2>选择班级与实验</h2>
+        <label for="reg-sel-class">班级</label>
+        <select id="reg-sel-class"></select>
+        <label for="reg-sel-experiment">实验</label>
+        <select id="reg-sel-experiment"></select>
+        <button id="btn-reg-enter" class="btn primary" style="width:100%;margin-top:16px;">进入登记</button>
+      </div>
+    </div>
+
+    <!-- 第二步：登记工作台 -->
+    <div id="reg-work-panel" class="hidden">
+      <div class="card">
+        <h2 id="reg-work-title">登记</h2>
+        <div class="search-row" style="margin-top:8px;">
+          <input id="register-student-no" type="search" placeholder="输入学号查找学生">
+          <button id="btn-do-register" class="btn primary">查找</button>
+        </div>
+        <div id="register-result"></div>
+        <button id="btn-reg-back-select" class="btn ghost small" style="margin-top:12px;">← 重新选择班级 / 实验</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 更正 -->
+  <div id="view-manage" class="view hidden">
+    <header>
+      <button class="btn ghost small btn-back-courses" title="返回课程列表">🏠</button>
+      <div class="brand"><span class="course-title-name">课程</span> · 更正</div>
+      <div class="header-actions">
+        <button class="btn ghost small btn-menu">☰</button>
+      </div>
+    </header>
+
+    <div class="search-row">
+      <input id="manage-student-no" type="search" placeholder="输入学号查找学生">
+      <button id="btn-do-manage" class="btn primary">查找</button>
+    </div>
+    <div id="manage-result"></div>
+  </div>
+
+  <!-- 总览页 -->
+  <div id="view-overview" class="view hidden">
+    <header>
+      <button class="btn ghost small btn-back-courses" title="返回课程列表">🏠</button>
+      <div class="brand"><span class="course-title-name">课程</span> · 总览</div>
+      <div class="header-actions">
+        <button class="btn ghost small btn-menu">☰</button>
+      </div>
+    </header>
+
+    <div class="filters">
+      <select id="sel-overview-class"></select>
+      <button id="btn-export" class="btn primary">导出 Excel</button>
+    </div>
+
+    <div class="overview-scroll">
+      <table id="overview-table" class="overview-table"></table>
+    </div>
+    <p id="overview-hint" class="empty hidden"></p>
+  </div>
+
+  <!-- 课程管理页（仅课程管理员可见） -->
+  <div id="view-admin" class="view hidden">
+    <header>
+      <button class="btn ghost small btn-back-courses" title="返回课程列表">🏠</button>
+      <div class="brand"><span class="course-title-name">课程</span> · 课程管理</div>
+      <div class="header-actions">
+        <button class="btn ghost small btn-menu">☰</button>
+      </div>
+    </header>
+
+    <div class="card">
+      <h2>成员与邀请</h2>
+      <div class="inline-form">
+        <button id="btn-new-invite" class="btn primary">生成邀请码</button>
+      </div>
+      <p id="invite-new-code" class="result"></p>
+      <p class="hint">把邀请码发给对方，对方登录后在「加入课程」中输入并确认即可成为助教。邀请码 7 天有效、一次性。</p>
+      <h3>成员</h3>
+      <ul id="member-list" class="exp-list"></ul>
+      <h3>邀请码</h3>
+      <ul id="invite-list" class="exp-list"></ul>
+    </div>
+
+    <div class="card">
+      <h2>实验管理</h2>
+      <div class="inline-form">
+        <input id="new-experiment" placeholder="实验名称，如：实验一">
+        <button id="btn-add-experiment" class="btn">添加实验</button>
+      </div>
+      <ul id="experiment-list" class="exp-list"></ul>
+    </div>
+  </div>
+
+  <!-- 班级管理子界面（管理页下） -->
+  <div id="view-class-manage" class="view hidden">
+    <header>
+      <button id="btn-cls-back" class="btn ghost small" title="返回课程列表">🏠</button>
+      <div class="brand" id="class-manage-title">班级管理</div>
+      <div class="header-actions">
+        <button class="btn ghost small btn-menu">☰</button>
+      </div>
+    </header>
+
+    <div id="cls-list-panel">
+      <div class="card">
+        <h2>创建班级</h2>
+        <div class="inline-form">
+          <input id="cls-new-class" placeholder="班级名称，如：计科2101">
+          <button id="btn-cls-add-class" class="btn primary">创建</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>班级列表</h2>
+        <ul id="cls-class-list" class="exp-list"></ul>
+      </div>
+    </div>
+
+    <div id="cls-detail-panel" class="hidden">
+      <div class="card">
+        <h2>导入学生名单</h2>
+        <p class="hint">支持 .xlsx / .xls / .csv，需包含「学号」「姓名」两列（文件中的班级列忽略，全部归入当前班级）。</p>
+        <input type="file" id="cls-import-file" accept=".xlsx,.xls,.csv">
+        <button id="btn-cls-import" class="btn primary">导入</button>
+        <p id="cls-import-result" class="result"></p>
+      </div>
+
+      <div class="card">
+        <h2>学生管理</h2>
+        <div class="inline-form" style="margin-bottom:8px;">
+          <input id="cls-new-student-no" placeholder="学号">
+          <input id="cls-new-student-name" placeholder="姓名">
+          <button id="btn-cls-add-student" class="btn primary">添加</button>
+        </div>
+        <ul id="cls-student-list" class="exp-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全局管理页（仅超级管理员可见） -->
+  <div id="view-admin-global" class="view hidden">
+    <header>
+      <button class="btn ghost small" id="btn-back-from-global" title="返回课程列表">🏠</button>
+      <div class="brand">全局管理</div>
+      <div class="header-actions"></div>
+    </header>
+
+    <div class="card">
+      <h2>用户管理</h2>
+      <ul id="user-admin-list" class="exp-list"></ul>
+    </div>
+
+    <div class="card">
+      <h2>课程管理</h2>
+      <ul id="course-admin-list" class="exp-list"></ul>
+    </div>
+  </div>
+
+  <!-- 全局菜单（侧边抽屉） -->
+  <div id="menu-overlay" class="menu-overlay"></div>
+  <aside id="menu-drawer" class="menu-drawer">
+    <div class="drawer-head">
+      <span>实验课签到</span>
+      <button id="drawer-close" class="drawer-close" aria-label="关闭菜单">×</button>
+    </div>
+    <nav class="drawer-nav">
+      <button class="drawer-item" data-view="register">登记</button>
+      <button class="drawer-item hidden" id="drawer-manage" data-view="manage">更正</button>
+      <button class="drawer-item hidden" id="drawer-overview" data-view="overview">总览</button>
+      <button class="drawer-item hidden" id="drawer-admin" data-view="admin">课程管理</button>
+      <button class="drawer-item hidden" id="drawer-admin-class" data-view="classManage">班级管理</button>
+    </nav>
+    <button class="drawer-item danger" data-view="logout">退出</button>
+  </aside>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
