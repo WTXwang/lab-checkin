@@ -5,6 +5,7 @@ import os
 import secrets
 import socket
 import sqlite3
+import time
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
@@ -24,7 +25,13 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 app = FastAPI(title="实验课签到系统")
-app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY, same_site="lax", max_age=None)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=config.SECRET_KEY,
+    same_site="lax",
+    max_age=None,
+    https_only=config.HTTPS_ONLY,
+)
 
 
 @app.middleware("http")
@@ -106,6 +113,22 @@ def _now():
 
 # ---------- 登录 / 注册 ----------
 
+_LOGIN_FAILURES = {}  # client_ip -> (连续失败次数, 最近失败时间)
+_LOGIN_WINDOW = 300  # 5 分钟无失败则重置计数
+
+
+def _login_failure_delay(request: Request):
+    """登录失败时按来源 IP 递增延迟，减缓暴力破解（单进程内存计数）。"""
+    ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    count, last = _LOGIN_FAILURES.get(ip, (0, 0.0))
+    if now - last > _LOGIN_WINDOW:
+        count = 0
+    delay = min(0.2 * count, 3.0)  # 每次失败 +0.2s，封顶 3s
+    _LOGIN_FAILURES[ip] = (count + 1, now)
+    time.sleep(delay)
+
+
 @app.post("/api/login")
 async def login(request: Request):
     data = await request.json()
@@ -121,7 +144,10 @@ async def login(request: Request):
             (username,),
         ).fetchone()
     if not user or not db.verify_password(password, user["password_hash"]):
+        _login_failure_delay(request)
         raise HTTPException(status_code=401, detail="用户名或密码错误")
+    if request.client:
+        _LOGIN_FAILURES.pop(request.client.host, None)
     request.session["uid"] = user["id"]
     request.session["username"] = user["username"]
     request.session["display_name"] = user["display_name"] or user["username"]
@@ -522,6 +548,9 @@ async def delete_experiment(course_id: int, exp_id: int, role: str = Depends(req
 
 # ---------- 导入 ----------
 
+_MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 导入文件上限 10MB
+
+
 @app.post("/api/courses/{course_id}/import")
 async def import_students(
     course_id: int,
@@ -532,6 +561,8 @@ async def import_students(
     """导入学生名单。传 class_id 时全部归入该班级（忽略文件中的班级列）；
     不传时按文件中的班级列自动建班归类。"""
     data = await file.read()
+    if len(data) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=400, detail="文件过大，最大 10MB")
     try:
         rows = importers.parse_file(file.filename, data)
     except ValueError as e:
