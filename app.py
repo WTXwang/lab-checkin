@@ -322,7 +322,7 @@ async def remove_member(course_id: int, user_id: int, role: str = Depends(requir
 
 
 def _new_invite_code(conn, course_id, uid, hours):
-    """生成一次性邀请码（8 位大写十六进制，无易混字符）。返回 (code, expires_at)。"""
+    """生成邀请码（8 位大写十六进制，无易混字符；有效期内可多人使用）。返回 (code, expires_at)。"""
     now = datetime.now().astimezone()
     expires = (now + timedelta(hours=hours)).isoformat(timespec="seconds")
     for _ in range(3):
@@ -343,8 +343,7 @@ def _new_invite_code(conn, course_id, uid, hours):
 async def list_invites(course_id: int, role: str = Depends(require_course_admin)):
     with db.get_db() as conn:
         rows = conn.execute(
-            "SELECT i.id, i.code, i.created_at, i.expires_at, i.used_at, i.used_by, "
-            "(SELECT username FROM users WHERE id = i.used_by) AS used_username "
+            "SELECT i.id, i.code, i.created_at, i.expires_at, i.use_count "
             "FROM invitations i WHERE i.course_id = ? ORDER BY i.id DESC",
             (course_id,),
         ).fetchall()
@@ -395,7 +394,7 @@ async def invite_preview(code: str, uid: int = Depends(require_user)):
         raise HTTPException(status_code=400, detail="请输入邀请码")
     with db.get_db() as conn:
         inv = _get_invite(conn, code)
-        if not inv or inv["used_at"] or inv["expires_at"] < _now():
+        if not inv or inv["expires_at"] < _now():
             raise HTTPException(status_code=404, detail="邀请码无效或已过期")
         if conn.execute(
             "SELECT 1 FROM course_members WHERE course_id = ? AND user_id = ?",
@@ -408,6 +407,7 @@ async def invite_preview(code: str, uid: int = Depends(require_user)):
         "course_name": inv["course_name"],
         "role": "assistant",
         "admin_username": inv["admin_username"],
+        "use_count": inv["use_count"],
     }
 
 
@@ -418,25 +418,25 @@ async def accept_invite(payload: dict, uid: int = Depends(require_user)):
         raise HTTPException(status_code=400, detail="请输入邀请码")
     with db.get_db() as conn:
         inv = _get_invite(conn, code)
-        if not inv or inv["used_at"] or inv["expires_at"] < _now():
+        if not inv or inv["expires_at"] < _now():
             raise HTTPException(status_code=404, detail="邀请码无效或已过期")
         if conn.execute(
             "SELECT 1 FROM course_members WHERE course_id = ? AND user_id = ?",
             (inv["course_id"], uid),
         ).fetchone():
             raise HTTPException(status_code=400, detail="你已是该课程成员")
+        try:
+            conn.execute(
+                "INSERT INTO course_members(course_id, user_id, role, joined_at) "
+                "VALUES (?, ?, 'assistant', ?)",
+                (inv["course_id"], uid, _now()),
+            )
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="你已是该课程成员")
+        # 一码多人：同一码可被不同用户使用，计数递增（原子操作，无需互斥）
         conn.execute(
-            "INSERT INTO course_members(course_id, user_id, role, joined_at) "
-            "VALUES (?, ?, 'assistant', ?)",
-            (inv["course_id"], uid, _now()),
+            "UPDATE invitations SET use_count = use_count + 1 WHERE id = ?", (inv["id"],)
         )
-        # 条件 UPDATE 互斥：并发下后到者 rowcount=0，整个事务回滚（含刚插入的成员行）
-        cur = conn.execute(
-            "UPDATE invitations SET used_at = ?, used_by = ? WHERE id = ? AND used_at IS NULL",
-            (_now(), uid, inv["id"]),
-        )
-        if cur.rowcount == 0:
-            raise HTTPException(status_code=409, detail="邀请码刚被使用")
     return {"ok": True, "course_id": inv["course_id"], "course_name": inv["course_name"]}
 
 

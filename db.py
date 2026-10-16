@@ -76,8 +76,7 @@ CREATE TABLE IF NOT EXISTS invitations (
     created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
-    used_at TEXT,
-    used_by INTEGER
+    use_count INTEGER NOT NULL DEFAULT 0   -- 已使用人数（一码可多人使用）
 );
 
 CREATE TABLE IF NOT EXISTS classes (
@@ -377,6 +376,16 @@ def _ensure_indexes(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_invitations_course ON invitations(course_id)")
 
 
+# ---------- 迁移：邀请码一次性 → 一码多人（use_count） ----------
+
+def _migrate_invites_multiuser(conn):
+    """invitations 补 use_count 列；旧的一次性码已使用过的记为 1 人使用。"""
+    if _column_exists(conn, "invitations", "use_count"):
+        return
+    conn.execute("ALTER TABLE invitations ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0")
+    conn.execute("UPDATE invitations SET use_count = 1 WHERE used_at IS NOT NULL")
+
+
 # ---------- 初始管理员 / 备份 / 初始化 ----------
 
 def _ensure_admin(conn):
@@ -438,6 +447,7 @@ def init_db():
         _ensure_admin(conn)
         _migrate_legacy(conn)
         summary = _migrate_to_courses(conn)
+        _migrate_invites_multiuser(conn)
         _ensure_indexes(conn)
         conn.execute("PRAGMA user_version = 2")
         conn.commit()

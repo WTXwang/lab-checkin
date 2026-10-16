@@ -355,6 +355,9 @@
         '<div class="invite-card">' +
         '<h2>课程「' + escapeHtml(data.course_name) + '」邀请你加入</h2>' +
         '<p class="hint">角色：助教 · 课程管理员：' + escapeHtml(data.admin_username) + "</p>" +
+        (data.use_count
+          ? '<p class="hint">该邀请码已有 ' + escapeHtml(data.use_count) + " 人加入</p>"
+          : "") +
         '<button class="btn primary" data-accept-invite="' + escapeHtml(code) + '">接受邀请</button>' +
         "</div>";
     } catch (ex) {
@@ -413,9 +416,8 @@
       $("invite-list").innerHTML =
         invites
           .map((i) => {
-            const status = i.used_at
-              ? "已被 " + escapeHtml(i.used_username || "") + " 使用"
-              : "待使用";
+            const status = (i.use_count ? "已用 " + i.use_count + " 人" : "待使用") +
+              " · " + (i.expires_at || "").slice(0, 10) + " 到期";
             return (
               "<li><span class=\"invite-code\">" + escapeHtml(i.code) + "</span>" +
               '<span class="muted">' + status + "</span>" +
@@ -430,9 +432,15 @@
 
   async function createInvite() {
     try {
-      const res = await api.post(cPath("/invites"), {});
+      const sel = $("invite-expiry");
+      const hours = sel ? Number(sel.value) : 168;
+      const label = sel && sel.selectedOptions.length
+        ? sel.selectedOptions[0].textContent
+        : "7 天";
+      const res = await api.post(cPath("/invites"), { expires_hours: hours });
       $("invite-new-code").innerHTML =
-        '新邀请码：<span class="invite-code">' + escapeHtml(res.code) + "</span>（7 天有效，一次性）";
+        '新邀请码：<span class="invite-code">' + escapeHtml(res.code) + "</span>（" +
+        label + "有效，可多人使用）";
       await renderInvites();
     } catch (ex) {
       alert(ex.message);

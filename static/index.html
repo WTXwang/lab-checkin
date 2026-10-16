@@ -168,10 +168,16 @@
     <div class="card">
       <h2>成员与邀请</h2>
       <div class="inline-form">
+        <label class="muted">有效期</label>
+        <select id="invite-expiry">
+          <option value="168">7 天</option>
+          <option value="720">30 天</option>
+          <option value="4320" selected>一学期（约 6 个月）</option>
+        </select>
         <button id="btn-new-invite" class="btn primary">生成邀请码</button>
       </div>
       <p id="invite-new-code" class="result"></p>
-      <p class="hint">把邀请码发给对方，对方登录后在「加入课程」中输入并确认即可成为助教。邀请码 7 天有效、一次性。</p>
+      <p class="hint">把邀请码发给对方，对方登录后在「加入课程」中输入并确认即可成为助教。邀请码在有效期内可多人使用，可随时撤销。</p>
       <h3>成员</h3>
       <ul id="member-list" class="exp-list"></ul>
       <h3>邀请码</h3>

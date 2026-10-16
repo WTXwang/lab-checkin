@@ -83,10 +83,12 @@ def test_fresh_flow():
         r = c.delete(f"/api/courses/{cid}/completions?student_id={student_id}&experiment_id={exp_id}")
         check("admin 撤销完成", r.status_code == 200, r.text)
 
-        r = c.post(f"/api/courses/{cid}/invites", json={})
-        check("生成邀请码", r.status_code == 200, r.text)
+        r = c.post(f"/api/courses/{cid}/invites", json={"expires_hours": 4320})
+        check("生成一学期（180 天）邀请码", r.status_code == 200, r.text)
         code = r.json()["code"]
         check("邀请码格式 ^[0-9A-F]{8}$", bool(re.match(r"^[0-9A-F]{8}$", code)), code)
+        r = c.post(f"/api/courses/{cid}/invites", json={"expires_hours": 99999})
+        check("超长有效期邀请码 400", r.status_code == 400, r.text)
 
         r = c.get("/api/admin/users")
         check("超管访问用户列表 200", r.status_code == 200, r.text)
@@ -115,7 +117,7 @@ def test_fresh_flow():
         r = c2.post("/api/invites/accept", json={"code": code})
         check("u2 接受邀请", r.status_code == 200, r.text)
         r = c2.post("/api/invites/accept", json={"code": code})
-        check("u2 同码再接受 404", r.status_code == 404, r.text)
+        check("u2 已是成员再接受 400", r.status_code == 400, r.text)
 
         r = c2.get("/api/courses").json()
         check("u2 课程列表角色为 assistant", any(x["id"] == cid and x["role"] == "assistant" for x in r["courses"]), r)
@@ -161,7 +163,7 @@ def test_fresh_flow():
         r = c3.get(f"/api/courses/{cid}/classes")
         check("u3 无关用户访问 403", r.status_code == 403, r.text)
         r = c3.post("/api/invites/accept", json={"code": code})
-        check("u3 用已使用邀请码 404", r.status_code == 404, r.text)
+        check("u3 用同一邀请码加入（一码多人）", r.status_code == 200, r.text)
 
     # --- admin：成员管理 ---
     with TestClient(app_module.app) as c:
@@ -173,6 +175,9 @@ def test_fresh_flow():
 
         r = c.get(f"/api/courses/{cid}/members")
         check("admin 查看成员列表", r.status_code == 200, r.text)
+        invs = c.get(f"/api/courses/{cid}/invites").json()["invites"]
+        inv = next(i for i in invs if i["code"] == code)
+        check("邀请码使用计数 use_count=2", inv["use_count"] == 2, inv)
         r = c.delete(f"/api/courses/{cid}/members/{me['id']}")
         check("admin 移除创建者 400", r.status_code == 400, r.text)
         r = c.delete(f"/api/courses/{cid}/members/{u2_id}")
@@ -238,6 +243,16 @@ def make_legacy_db(path):
             UNIQUE (student_id, experiment_id)
         );
         CREATE UNIQUE INDEX idx_students_owner_student_no ON students(owner_id, student_no);
+        CREATE TABLE invitations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_id INTEGER NOT NULL,
+            code TEXT NOT NULL UNIQUE,
+            created_by INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            used_by INTEGER
+        );
         """
     )
     now = "2026-01-01T00:00:00+08:00"
@@ -265,6 +280,13 @@ def make_legacy_db(path):
     conn.execute("INSERT INTO completions(id, student_id, experiment_id, completed_at) VALUES (1, 1, 1, ?)", (now,))
     conn.execute("INSERT INTO completions(id, student_id, experiment_id, completed_at) VALUES (2, 3, 3, ?)", (now,))
     conn.execute("INSERT INTO completions(id, student_id, experiment_id, completed_at) VALUES (3, 4, 4, ?)", (now,))
+    # 旧版一次性邀请码：一条已使用（迁移后 use_count=1）、一条未使用
+    conn.execute(
+        "INSERT INTO invitations(id, course_id, code, created_by, created_at, expires_at, used_at, used_by) "
+        "VALUES (1, 1, 'AAAAAAAA', 1, ?, ?, ?, 2)", (now, now, now))
+    conn.execute(
+        "INSERT INTO invitations(id, course_id, code, created_by, created_at, expires_at, used_at, used_by) "
+        "VALUES (2, 1, 'BBBBBBBB', 1, ?, ?, NULL, NULL)", (now, now))
     conn.commit()
     conn.close()
 
@@ -318,6 +340,11 @@ def test_legacy_migration():
 
     fk = conn.execute("PRAGMA foreign_key_check").fetchall()
     check("foreign_key_check 为空", len(fk) == 0, [dict(f) for f in fk])
+
+    invs = conn.execute("SELECT code, use_count FROM invitations ORDER BY id").fetchall()
+    check("旧一次性邀请码迁移为一码多人（use_count 补列）",
+          len(invs) == 2 and invs[0]["use_count"] == 1 and invs[1]["use_count"] == 0,
+          [dict(i) for i in invs])
 
     conn.close()
 
