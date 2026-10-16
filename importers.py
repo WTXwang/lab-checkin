@@ -25,7 +25,14 @@ def _match(cell, keys):
     c = _norm(cell)
     if not c:
         return False
-    return any(k in c or c in k for k in keys)
+    for k in keys:
+        if c == k or c in k:
+            return True
+        # k in c：允许「学生学号」匹配「学号」这类长表头；
+        # 但句子式长文本（如首行大标题里顺带提到"学号、姓名"）不算表头
+        if k in c and len(c) <= len(k) + 12 and (len(k) > 1 or c.endswith(k)):
+            return True
+    return False
 
 
 def _clean(v):
@@ -106,7 +113,9 @@ def _extract(rows):
                 name_i = j
             if class_i is None and _match(cell, _CLASS_KEYS):
                 class_i = j
-        if no_i is not None and name_i is not None:
+        # 「学号」「姓名」必须在不同单元格——首行大标题常常一句话里同时提到
+        # 两者（同在一个合并单元格里），这种情况不是表头行，继续往下找
+        if no_i is not None and name_i is not None and no_i != name_i:
             header_idx = i
             col_no, col_name, col_class = no_i, name_i, class_i
             break
@@ -115,11 +124,20 @@ def _extract(rows):
         raise ValueError("未找到表头行，请确保文件包含「学号」和「姓名」两列")
 
     result = []
+    last_class = ""
     for row in rows[header_idx + 1:]:
         student_no = _clean(row[col_no]) if col_no < len(row) else ""
         name = _clean(row[col_name]) if col_name < len(row) else ""
         class_name = _clean(row[col_class]) if (col_class is not None and col_class < len(row)) else ""
-        if not student_no and not name:
+        if class_name:
+            last_class = class_name
+        else:
+            # 合并单元格：班级只填了该组第一行，后续空行沿用上一行
+            class_name = last_class
+        if not student_no or not name:
+            continue
+        # 多页打印的表格中间会重复出现表头行（学号/姓名字样），跳过
+        if _match(student_no, _NO_KEYS) or _match(name, _NAME_KEYS):
             continue
         if not class_name:
             class_name = _DEFAULT_CLASS

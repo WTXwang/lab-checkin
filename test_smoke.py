@@ -337,9 +337,57 @@ def test_legacy_migration():
           counts)
 
 
+# ---------- 3. 导入文件解析（真实表格的常见情况） ----------
+
+def _csv_bytes(text):
+    return text.encode("utf-8")
+
+
+def test_import_parsing():
+    import importers
+
+    # 1. 首行是大标题（一句话里含"学号/姓名/班级"字样）+ 多余列 + 表头在第二行
+    rows = importers.parse_file("a.csv", _csv_bytes(
+        "2026年秋季物理实验课学生名单（含学号、姓名、班级等）\n"
+        "学号,姓名,班级,性别,电话\n"
+        "2025001,张三,1班,男,138000\n"
+        "2025002,李四,1班,女,139000\n"
+    ))
+    check("导入：大标题行不误判为表头",
+          rows == [("1班", "2025001", "张三"), ("1班", "2025002", "李四")], rows)
+
+    # 2. 合并单元格：班级只出现在每组第一行，后续空行沿用
+    rows = importers.parse_file("b.csv", _csv_bytes(
+        "学号,姓名,班级\n"
+        "S01,张三,1班\n"
+        "S02,李四,\n"
+        "S03,王五,\n"
+        "S04,赵六,2班\n"
+        "S05,钱七,\n"
+    ))
+    check("导入：合并单元格班级向下填充",
+          [r[0] for r in rows] == ["1班", "1班", "1班", "2班", "2班"], rows)
+
+    # 3. 中间重复出现表头行（多页打印），跳过而不是当学生导入
+    rows = importers.parse_file("c.csv", _csv_bytes(
+        "学号,姓名,班级\n"
+        "S01,甲,1班\n"
+        "学号,姓名,班级\n"
+        "S02,乙,1班\n"
+    ))
+    check("导入：重复表头行跳过", [r[1] for r in rows] == ["S01", "S02"], rows)
+
+    # 4. 全文件没有班级列 → 默认班级
+    rows = importers.parse_file("d.csv", _csv_bytes(
+        "学号,姓名\nS01,甲\n"
+    ))
+    check("导入：无班级列用默认班级", rows == [("默认班级", "S01", "甲")], rows)
+
+
 def main():
     test_fresh_flow()
     test_legacy_migration()
+    test_import_parsing()
     print()
     print("=" * 52)
     print(f"  通过 {len(PASS)} 项，失败 {len(FAIL)} 项")
